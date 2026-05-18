@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Robot</title>
+    <style>
+        body    { display: flex; flex-direction: column; align-items: center; background: #222; color: white; font-family: Arial; }
+        button  { width: 90px; height: 70px; margin: 8px; font-size: 20px; border: none; border-radius: 10px; background: #007bff; color: white; }
+        .row    { display: flex; }
+    </style>
+</head>
+<body>
+    <h2>Robot</h2>
+
+    <div class="row">
+        <button id="fwd">▲</button>
+    </div>
+    <div class="row">
+        <button id="left">◄</button>
+        <button id="stop" style="background:#dc3545;">■</button>
+        <button id="right">►</button>
+    </div>
+    <div class="row">
+        <button id="rev">▼</button>
+    </div>
+
+    <script>
+        // Send a GET request to the ESP32 route (e.g. /fwd, /stop)
+        function send(cmd) {
+            fetch("/" + cmd);
+        }
+
+        // Hold-to-move: send command on press, stop on release
+        function holdButton(id, cmd) {
+            var btn = document.getElementById(id);
+            btn.addEventListener("mousedown",  function() { send(cmd);    });
+            btn.addEventListener("mouseup",    function() { send("stop"); });
+            btn.addEventListener("touchstart", function() { send(cmd);    });
+            btn.addEventListener("touchend",   function() { send("stop"); });
+        }
+
+        holdButton("fwd",   "fwd");
+        holdButton("rev",   "rev");
+        holdButton("left",  "left");
+        holdButton("right", "right");
+
+        // Stop button just stops
+        document.getElementById("stop").addEventListener("click", function() { send("stop"); });
+    </script>
+</body>
+</html>
