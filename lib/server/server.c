@@ -2,11 +2,19 @@
 #include "motors.h"
 #include "server.h"
 
-// Serve the HTML page
+// PlatformIO + ESP-IDF flattens symbol names down to the filename structure
+extern const uint8_t index_html_start[] asm("_binary_index_html_start");
+extern const uint8_t index_html_end[]   asm("_binary_index_html_end");
+
 esp_err_t handle_root(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html");
-    return ESP_OK;
+    
+    // Calculate size using flat name symbols
+    const size_t index_html_size = (index_html_end - index_html_start);
+    
+    return httpd_resp_send(req, (const char *)index_html_start, index_html_size);
 }
+
 
 // Movement handlers — each calls motors_set() then replies "OK"
 esp_err_t handle_fwd(httpd_req_t *req)   { motors_set( 100,  100); httpd_resp_send(req, "OK", 2); return ESP_OK; }
