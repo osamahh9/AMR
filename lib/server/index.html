@@ -5,8 +5,11 @@
     <title>Robot</title>
     <style>
         body    { display: flex; flex-direction: column; align-items: center; background: #222; color: white; font-family: Arial; }
-        button  { width: 90px; height: 70px; margin: 8px; font-size: 20px; border: none; border-radius: 10px; background: #007bff; color: white; }
+        button  { width: 90px; height: 70px; margin: 8px; font-size: 20px; border: none; border-radius: 10px; background: #007bff; color: white; cursor: pointer; }
+        button:active { background: #0056b3; }
         .row    { display: flex; }
+        .slider-container { margin-top: 30px; text-align: center; }
+        input[type=range] { width: 80vw; max-width: 300px; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -23,20 +26,30 @@
     <div class="row">
         <button id="rev">▼</button>
     </div>
+<div class="slider-container">
+        <label for="speed">Speed (%): <strong id="speedVal">100</strong></label><br>
+        <input type="range" id="speed" min="0" max="600" value="100" oninput="document.getElementById('speedVal').innerText = this.value;">
+    </div>
 
     <script>
-        // Send a GET request to the ESP32 route (e.g. /fwd, /stop)
+        // Send a GET request with the RPM query parameter (e.g., /fwd?rpm=150)
         function send(cmd) {
-            fetch("/" + cmd);
+            if (cmd === "stop") {
+                fetch("/stop");
+            } else {
+                var rpm = document.getElementById("speed").value;
+                fetch("/" + cmd + "?rpm=" + rpm);
+            }
         }
 
         // Hold-to-move: send command on press, stop on release
         function holdButton(id, cmd) {
             var btn = document.getElementById(id);
-            btn.addEventListener("mousedown",  function() { send(cmd);    });
-            btn.addEventListener("mouseup",    function() { send("stop"); });
-            btn.addEventListener("touchstart", function() { send(cmd);    });
-            btn.addEventListener("touchend",   function() { send("stop"); });
+            // Added e.preventDefault() on touch to prevent ghost click firing
+            btn.addEventListener("mousedown",  function(e) { send(cmd); });
+            btn.addEventListener("mouseup",    function(e) { send("stop"); });
+            btn.addEventListener("touchstart", function(e) { e.preventDefault(); send(cmd); });
+            btn.addEventListener("touchend",   function(e) { e.preventDefault(); send("stop"); });
         }
 
         holdButton("fwd",   "fwd");
