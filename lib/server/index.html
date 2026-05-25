@@ -2,63 +2,100 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Robot</title>
+    <title>AMR Dashboard</title>
     <style>
-        body    { display: flex; flex-direction: column; align-items: center; background: #222; color: white; font-family: Arial; }
-        button  { width: 90px; height: 70px; margin: 8px; font-size: 20px; border: none; border-radius: 10px; background: #007bff; color: white; cursor: pointer; }
-        button:active { background: #0056b3; }
-        .row    { display: flex; }
-        .slider-container { margin-top: 30px; text-align: center; }
-        input[type=range] { width: 80vw; max-width: 300px; margin-top: 10px; }
+        :root { --bg: #1a1a1a; --card: #2d2d2d; --primary: #00d1ff; --danger: #ff4d4d; --text: #f0f0f0; }
+        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; width: 100%; max-width: 900px; }
+        .card { background: var(--card); padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); text-align: center; border-top: 4px solid var(--primary); }
+        .card.danger { border-top-color: var(--danger); }
+        .val { font-size: 48px; font-weight: bold; margin: 10px 0; color: var(--primary); }
+        .label { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.8; }
+        .controls { display: flex; justify-content: center; gap: 40px; margin-top: 30px; }
+        input[type=range][orient=vertical] { appearance: slider-vertical; width: 60px; height: 250px; cursor: pointer; }
+        .btn { background: var(--danger); border: none; color: white; padding: 15px 40px; border-radius: 30px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 30px; transition: transform 0.1s; }
+        .btn:active { transform: scale(0.95); }
+        #distBar { width: 100%; height: 20px; background: #444; border-radius: 10px; margin-top: 10px; overflow: hidden; }
+        #distFill { height: 100%; background: var(--primary); width: 0%; transition: width 0.2s; }
     </style>
 </head>
 <body>
-    <h2>Robot</h2>
+    <h1>AMR MONITOR</h1>
 
-    <div class="row">
-        <button id="fwd">▲</button>
+    <div class="grid">
+        <div class="card">
+            <div class="label">Left Motor</div>
+            <div id="lRpm" class="val">0</div>
+            <div class="label">RPM</div>
+        </div>
+        <div class="card">
+            <div class="label">Right Motor</div>
+            <div id="rRpm" class="val">0</div>
+            <div class="label">RPM</div>
+        </div>
+        <div class="card danger" style="grid-column: 1 / -1;">
+            <div class="label">Obstacle Distance</div>
+            <div id="distVal" class="val">--</div>
+            <div class="label">Centimeters</div>
+            <div id="distBar"><div id="distFill"></div></div>
+        </div>
     </div>
-    <div class="row">
-        <button id="left">◄</button>
-        <button id="stop" style="background:#dc3545;">■</button>
-        <button id="right">►</button>
+
+    <div class="controls">
+        <div style="text-align:center">
+            <input type="range" id="leftSlider" min="-600" max="600" value="0" step="10" orient="vertical">
+            <p>LEFT</p>
+        </div>
+        <div style="text-align:center">
+            <input type="range" id="rightSlider" min="-600" max="600" value="0" step="10" orient="vertical">
+            <p>RIGHT</p>
+        </div>
     </div>
-    <div class="row">
-        <button id="rev">▼</button>
-    </div>
-<div class="slider-container">
-        <label for="speed">Speed (%): <strong id="speedVal">100</strong></label><br>
-        <input type="range" id="speed" min="0" max="600" value="100" oninput="document.getElementById('speedVal').innerText = this.value;">
-    </div>
+
+    <button id="stopBtn" class="btn">STOP ALL</button>
 
     <script>
-        // Send a GET request with the RPM query parameter (e.g., /fwd?rpm=150)
-        function send(cmd) {
-            if (cmd === "stop") {
-                fetch("/stop");
-            } else {
-                var rpm = document.getElementById("speed").value;
-                fetch("/" + cmd + "?rpm=" + rpm);
-            }
+        const leftSlider = document.getElementById('leftSlider');
+        const rightSlider = document.getElementById('rightSlider');
+        const lRpmText = document.getElementById('lRpm');
+        const rRpmText = document.getElementById('rRpm');
+        const distText = document.getElementById('distVal');
+        const distFill = document.getElementById('distFill');
+
+        async function updateDrive() {
+            fetch(`/drive?left=${leftSlider.value}&right=${rightSlider.value}`);
         }
 
-        // Hold-to-move: send command on press, stop on release
-        function holdButton(id, cmd) {
-            var btn = document.getElementById(id);
-            // Added e.preventDefault() on touch to prevent ghost click firing
-            btn.addEventListener("mousedown",  function(e) { send(cmd); });
-            btn.addEventListener("mouseup",    function(e) { send("stop"); });
-            btn.addEventListener("touchstart", function(e) { e.preventDefault(); send(cmd); });
-            btn.addEventListener("touchend",   function(e) { e.preventDefault(); send("stop"); });
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/status');
+                const data = await res.json();
+                lRpmText.innerText = data.left.toFixed(1);
+                rRpmText.innerText = data.right.toFixed(1);
+                
+                if (data.dist > 400) {
+                    distText.innerText = "CLEAR";
+                    distFill.style.width = "100%";
+                    distFill.style.background = "#00ff88";
+                } else {
+                    distText.innerText = data.dist;
+                    let p = (data.dist / 100) * 100;
+                    if (p > 100) p = 100;
+                    distFill.style.width = p + "%";
+                    distFill.style.background = data.dist < 20 ? "#ff4d4d" : "#00d1ff";
+                }
+            } catch (e) {}
         }
 
-        holdButton("fwd",   "fwd");
-        holdButton("rev",   "rev");
-        holdButton("left",  "left");
-        holdButton("right", "right");
+        leftSlider.oninput = updateDrive;
+        rightSlider.oninput = updateDrive;
 
-        // Stop button just stops
-        document.getElementById("stop").addEventListener("click", function() { send("stop"); });
+        const reset = () => { leftSlider.value = 0; rightSlider.value = 0; updateDrive(); };
+        leftSlider.onmouseup = leftSlider.ontouchend = () => { leftSlider.value = 0; updateDrive(); };
+        rightSlider.onmouseup = rightSlider.ontouchend = () => { rightSlider.value = 0; updateDrive(); };
+        document.getElementById('stopBtn').onclick = reset;
+
+        setInterval(fetchStatus, 200);
     </script>
 </body>
 </html>

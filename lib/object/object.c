@@ -3,8 +3,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
-#include "driver/ledc.h"
-#include "driver/gpio.h"
+#include "esp_random.h"
 #include "object.h"
 
 static const char *TAG = "OBJECT_DETECTION";
@@ -17,8 +16,10 @@ volatile uint32_t measured_distance = 0;
 #define MAX_DISTANCE_CM        400
 #define DETECTION_THRESHOLD_CM 20
 
-#define SERVO_PIN_1            6
-#define SERVO_PIN_2            7
+// NOTE: Check if GPIO 6/7 are used for Flash on your specific board!
+// If they are, servos will not work.
+#define SERVO_PIN_1            10
+#define SERVO_PIN_2            11
 #define SERVO_CH_1             LEDC_CHANNEL_2
 #define SERVO_CH_2             LEDC_CHANNEL_3
 
@@ -42,17 +43,20 @@ static servo_config_t servo_cfg = {
 };
 
 esp_err_t object_detection_init(void) {
-    ESP_LOGI(TAG, "Initializing ultrasonic sensor...");
+    ESP_LOGI(TAG, "Initializing ultrasonic sensor (Trig:%d, Echo:%d)...", ULTRASONIC_TRIGGER_PIN, ULTRASONIC_ECHO_PIN);
     ultrasonic_init(&sensor);
 
-    ESP_LOGI(TAG, "Initializing servos...");
+    ESP_LOGI(TAG, "Initializing servos on GPIO %d and %d...", SERVO_PIN_1, SERVO_PIN_2);
     esp_err_t ret = iot_servo_init(LEDC_LOW_SPEED_MODE, &servo_cfg);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize servos");
+        ESP_LOGE(TAG, "Failed to initialize servos: %d", ret);
         return ret;
     }
 
-    // Set initial positions
+    // TEST: Force a tiny movement to see signal on oscilloscope
+    iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_1, 1.0f);
+    iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_2, 1.0f);
+    vTaskDelay(pdMS_TO_TICKS(100));
     iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_1, 0.0f);
     iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_2, 0.0f);
 
@@ -74,26 +78,22 @@ void object_detection_task(void *pvParameters) {
     while (1) {
         res = ultrasonic_measure_cm(&sensor, MAX_DISTANCE_CM, &distance);
         if (res != ESP_OK) {
-            ESP_LOGW(TAG, "Could not measure distance: %d", res);
+            // Error 513 = ESP_ERR_TIMEOUT. Check your wiring!
+            ESP_LOGW(TAG, "Ultrasonic Error: %d (Check wiring!)", res);
             measured_distance = 999;
         } else {
             measured_distance = distance;
             ESP_LOGI(TAG, "Distance: %ld cm", distance);
 
             if (distance < DETECTION_THRESHOLD_CM) {
-                ESP_LOGI(TAG, "Object detected! Performing dummy movement...");
-                
-                // Dummy movement: Wave servos
-                iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_1, 90.0f);
-                iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_2, 90.0f);
-                vTaskDelay(pdMS_TO_TICKS(500));
-                
-                iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_1, 0.0f);
-                iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_2, 0.0f);
-                vTaskDelay(pdMS_TO_TICKS(500));
+                ESP_LOGI(TAG, "Object detected! Randomizing servos...");
+                float a1 = (float)(esp_random() % 181);
+                float a2 = (float)(esp_random() % 181);
+                iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_1, a1);
+                iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_2, a2);
+                vTaskDelay(pdMS_TO_TICKS(1000));
             }
         }
-
         vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
