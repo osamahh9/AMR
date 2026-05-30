@@ -5,15 +5,21 @@
 #include "driver/pulse_cnt.h"
 #include "esp_log.h"
 #include "encoders.h"
+#include "server.h"
 
 #define LEFT_SENSOR_GPIO      4
 #define RIGHT_SENSOR_GPIO     5
 #define SLOTS_ON_DISK         20
-#define SAMPLE_PERIOD_MS      100 
-#define WINDOW_SIZE           10  // 1 second rolling window
+#define SAMPLE_PERIOD_MS      20  // 50Hz for better control response
+#define WINDOW_SIZE           50  // Maintain 1 second rolling window (50 * 20ms = 1000ms)
 
 volatile float current_measured_rpm_left = 0.0;
 volatile float current_measured_rpm_right = 0.0;
+
+volatile int64_t total_pulses_left = 0;
+volatile int64_t total_pulses_right = 0;
+
+portMUX_TYPE pulse_mux = portMUX_INITIALIZER_UNLOCKED;
 
 // Rolling window history
 static int history_left[WINDOW_SIZE] = {0};
@@ -37,6 +43,15 @@ static void encoders_task(void *arg) {
         ESP_ERROR_CHECK(pcnt_unit_get_count(unit_right, &pulse_count_right));
         ESP_ERROR_CHECK(pcnt_unit_clear_count(unit_right));
 
+        // Use the sign of desired_rpm to determine direction
+        portENTER_CRITICAL(&pulse_mux);
+        if (desired_rpm_left >= 0) total_pulses_left += pulse_count_left;
+        else total_pulses_left -= pulse_count_left;
+
+        if (desired_rpm_right >= 0) total_pulses_right += pulse_count_right;
+        else total_pulses_right -= pulse_count_right;
+        portEXIT_CRITICAL(&pulse_mux);
+
         // Update rolling history
         history_left[history_idx] = pulse_count_left;
         history_right[history_idx] = pulse_count_right;
@@ -51,7 +66,6 @@ static void encoders_task(void *arg) {
         }
 
         // RPM = (total_pulses_per_sec * 60) / slots
-        // With WINDOW_SIZE=10 and SAMPLE_PERIOD_MS=100, the window is exactly 1 second.
         current_measured_rpm_left = (float)(total_left * 60) / SLOTS_ON_DISK;
         current_measured_rpm_right = (float)(total_right * 60) / SLOTS_ON_DISK;
     }

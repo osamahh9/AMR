@@ -37,7 +37,7 @@ static servo_config_t servo_cfg = {
     .min_width_us = 500,
     .max_width_us = 2500,
     .freq = 50,
-    .timer_number = LEDC_TIMER_0, // Using TIMER 1 to avoid conflict with motors on TIMER 0
+    .timer_number = LEDC_TIMER_1, 
     .channels = {
         .servo_pin = {SERVO_PIN_1, SERVO_PIN_2, SERVO_PIN_3},
         .ch = {SERVO_CH_1, SERVO_CH_2, SERVO_CH_3}
@@ -56,7 +56,7 @@ esp_err_t object_detection_init(void) {
         return ret;
     }
 
-    // TEST: Force a tiny movement to see signal on oscilloscope
+    // Startup test
     iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_1, 1.0f);
     iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_2, 1.0f);
     iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_3, 1.0f);
@@ -83,17 +83,18 @@ void object_detection_task(void *pvParameters) {
     esp_err_t res;
 
     while (1) {
+        // Increased frequency to 20Hz (50ms) to match robot speed
+        vTaskDelay(pdMS_TO_TICKS(50));
+
         res = ultrasonic_measure_cm(&sensor, MAX_DISTANCE_CM, &distance);
         if (res != ESP_OK) {
-            ESP_LOGW(TAG, "Ultrasonic Error: %d (Check wiring!)", res);
             measured_distance = 999;
             obstacle_detected = false;
         } else {
             measured_distance = distance;
             obstacle_detected = (distance < DETECTION_THRESHOLD_CM);
-            ESP_LOGI(TAG, "Distance: %ld cm | Obstacle: %s", distance, obstacle_detected ? "YES" : "NO");
 
-            // Servo 1 & 2 follow web angles
+            // Apply desired angles from web
             iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_1, desired_servo_angle_1);
             iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_2, desired_servo_angle_2);
             
@@ -101,6 +102,5 @@ void object_detection_task(void *pvParameters) {
             float inverse_angle = 180.0f - desired_servo_angle_1;
             iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_3, inverse_angle);
         }
-        vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
