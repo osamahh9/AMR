@@ -42,8 +42,8 @@ void wifi_init(void) {
 
 static const char *TAG = "WIFI";
 
-#define WIFI_SSID      "YOUR_WIFI_SSID"
-#define WIFI_PASS      "YOUR_WIFI_PASSWORD"
+#define WIFI_SSID      "OSI 2.4"
+#define WIFI_PASS      "NaRuTo1**1"
 
 void wifi_init(void) {
     esp_netif_init();

@@ -3,8 +3,8 @@
 #include "motors.h"
 
 // --- Pin Definitions ---
-#define ENA   19
-#define IN1   20
+#define ENA   14
+#define IN1   15
 #define IN2   21
 #define ENB   16
 #define IN3   17
@@ -14,10 +14,10 @@ void motors_init(void) {
     // Setup PWM timer
     ledc_timer_config_t timer = {
         .speed_mode       = LEDC_LOW_SPEED_MODE,
-        .timer_num        = LEDC_TIMER_0,
+        .timer_num        = LEDC_TIMER_1,
         .duty_resolution  = LEDC_TIMER_10_BIT,
         .freq_hz          = 1000,
-        .clk_cfg          = LEDC_AUTO_CLK
+        .clk_cfg          = LEDC_USE_XTAL_CLK
     };
     ledc_timer_config(&timer);
 
@@ -25,7 +25,7 @@ void motors_init(void) {
     ledc_channel_config_t ch_left = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
         .channel    = LEDC_CHANNEL_0,
-        .timer_sel  = LEDC_TIMER_0,
+        .timer_sel  = LEDC_TIMER_1,
         .gpio_num   = ENA,
         .duty       = 0
     };
@@ -35,7 +35,7 @@ void motors_init(void) {
     ledc_channel_config_t ch_right = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
         .channel    = LEDC_CHANNEL_1,
-        .timer_sel  = LEDC_TIMER_0,
+        .timer_sel  = LEDC_TIMER_1,
         .gpio_num   = ENB,
         .duty       = 0
     };

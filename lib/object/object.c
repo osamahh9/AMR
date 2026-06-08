@@ -19,9 +19,9 @@ volatile bool obstacle_detected = false;
 
 // NOTE: Check if GPIO 6/7 are used for Flash on your specific board!
 // If they are, servos will not work.
-#define SERVO_PIN_1            6
-#define SERVO_PIN_2            7
-#define SERVO_PIN_3            8
+#define SERVO_PIN_1            10
+#define SERVO_PIN_2            11
+#define SERVO_PIN_3            12
 #define SERVO_CH_1             LEDC_CHANNEL_2
 #define SERVO_CH_2             LEDC_CHANNEL_3
 #define SERVO_CH_3             LEDC_CHANNEL_4
@@ -37,7 +37,7 @@ static servo_config_t servo_cfg = {
     .min_width_us = 500,
     .max_width_us = 2500,
     .freq = 50,
-    .timer_number = LEDC_TIMER_1, 
+    .timer_number = LEDC_TIMER_0, 
     .channels = {
         .servo_pin = {SERVO_PIN_1, SERVO_PIN_2, SERVO_PIN_3},
         .ch = {SERVO_CH_1, SERVO_CH_2, SERVO_CH_3}

@@ -10,11 +10,11 @@
 
 void init_system(void) {
     nvs_flash_init();
-    motors_init();
+    object_detection_init(); // Initialize servos first on Timer 0
+    motors_init();           // Initialize motors second on Timer 1
     wifi_init();
     server_init();
     encoders_init();
-    object_detection_init();
 }
 
 void app_main(void) {
