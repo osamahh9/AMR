@@ -107,6 +107,18 @@
             </div>
         </section>
 
+        <!-- MQTT STATUS -->
+        <section class="glass-card rounded-xl p-4 flex flex-col gap-4">
+            <div class="flex justify-between items-center border-b border-primary/20 pb-2">
+                <h2 class="font-label-caps text-xs text-primary tracking-widest uppercase">MQTT Control Center</h2>
+                <div class="px-2 py-1 rounded bg-error-container text-on-error-container font-label-caps text-[10px]" id="mqtt_led">OFFLINE</div>
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-xs text-on-surface-variant">Broker:</span>
+                <span class="font-mono-data text-primary text-sm" id="mqtt_broker">192.168.137.1</span>
+            </div>
+        </section>
+
         <!-- NAVIGATION CONTROL -->
         <section class="glass-card rounded-xl p-4 flex flex-col gap-4">
             <h2 class="font-label-caps text-xs text-primary tracking-widest border-b border-primary/20 pb-2 uppercase">Navigation</h2>
@@ -204,6 +216,20 @@
                     obsEl.classList.replace('text-on-error-container', 'text-on-secondary-container');
                     distEl.classList.remove('text-error');
                     distEl.classList.add('text-primary');
+                }
+
+                // MQTT Update
+                var mqttLed = document.getElementById("mqtt_led");
+                if (data.mqtt) {
+                    mqttLed.innerText = "CONNECTED";
+                    mqttLed.classList.replace('bg-error-container', 'bg-secondary-container');
+                    mqttLed.classList.replace('text-on-error-container', 'text-on-secondary-container');
+                    mqttLed.classList.add('animate-pulse');
+                } else {
+                    mqttLed.innerText = "OFFLINE";
+                    mqttLed.classList.replace('bg-secondary-container', 'bg-error-container');
+                    mqttLed.classList.replace('text-on-secondary-container', 'text-on-error-container');
+                    mqttLed.classList.remove('animate-pulse');
                 }
             }).catch(function(e) {});
         }

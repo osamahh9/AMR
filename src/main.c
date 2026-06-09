@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "object.h"
+#include "mqtt.h"
 
 void init_system(void) {
     nvs_flash_init();
@@ -15,6 +16,7 @@ void init_system(void) {
     wifi_init();
     server_init();
     encoders_init();
+    mqtt_app_start();
 }
 
 void app_main(void) {

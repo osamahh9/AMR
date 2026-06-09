@@ -5,9 +5,19 @@
 #include "encoders.h"
 #include "esp_log.h"
 #include "control.h"
+#include "mqtt.h"
 #include <math.h>
 
 static const char *TAG = "Control";
+
+// Global navigation variables (Exposed in control.h)
+volatile float current_x = 0, current_y = 0, current_theta = 0;
+volatile float target_x = 0;
+volatile float target_y = 0;
+volatile float target_theta = 0;
+volatile bool nav_active = false;
+volatile int desired_rpm_left = 0;
+volatile int desired_rpm_right = 0;
 
 // --- Robot Physical Constants ---
 #define WHEEL_DIAMETER_MM 65.0
@@ -42,8 +52,7 @@ static int power_left_last = 0, power_right_last = 0;
 // Acceleration ramp state
 static float commanded_speed = 0;
 
-// Odometry state
-volatile float current_x = 0, current_y = 0, current_theta = 0;
+// Odometry pulses
 static int64_t last_pulses_left = 0;
 static int64_t last_pulses_right = 0;
 
@@ -159,6 +168,7 @@ void control_task(void *arg) {
                 if (fabsf(angle_error) < ANGLE_TOLERANCE_RAD) {
                     ESP_LOGI(TAG, "Nav Complete!");
                     nav_active = false;
+                    mqtt_report_completion();
                     current_nav_state = NAV_IDLE;
                     desired_rpm_left = 0;
                     desired_rpm_right = 0;

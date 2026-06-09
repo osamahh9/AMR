@@ -1,3 +1,5 @@
 dependencies:
   esp-idf-lib/ultrasonic:
     version: "1.1.0"
+  cjson:
+    version: "*"

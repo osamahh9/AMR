@@ -3,6 +3,7 @@
 #include "encoders.h"
 #include "object.h"
 #include "control.h"
+#include "mqtt.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -10,17 +11,9 @@
 
 static const char *TAG = "Server";
 
-// Global state variables
-volatile int desired_rpm_left = 0;
-volatile int desired_rpm_right = 0;
+// Servo angles remain local to server (or can be moved later)
 volatile float desired_servo_angle_1 = 90.0f;
 volatile float desired_servo_angle_2 = 90.0f;
-
-// Navigation targets
-volatile float target_x = 0;
-volatile float target_y = 0;
-volatile float target_theta = 0;
-volatile bool nav_active = false;
 
 extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[]   asm("_binary_index_html_end");
@@ -35,10 +28,11 @@ esp_err_t handle_root(httpd_req_t *req) {
 esp_err_t handle_status(httpd_req_t *req) {
     char json_response[256];
     snprintf(json_response, sizeof(json_response), 
-             "{\"left\":%.1f,\"right\":%.1f,\"dist\":%ld,\"obs\":%d,\"x\":%.1f,\"y\":%.1f,\"th\":%.1f}", 
+             "{\"left\":%.1f,\"right\":%.1f,\"dist\":%ld,\"obs\":%d,\"x\":%.1f,\"y\":%.1f,\"th\":%.1f,\"mqtt\":%d}", 
              current_measured_rpm_left, current_measured_rpm_right, 
              measured_distance, obstacle_detected ? 1 : 0,
-             current_x, current_y, current_theta);
+             current_x, current_y, current_theta,
+             mqtt_is_connected() ? 1 : 0);
     
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, json_response, HTTPD_RESP_USE_STRLEN);
@@ -108,11 +102,13 @@ void server_init(void) {
     config.stack_size = 8192;
 
     if (httpd_start(&server, &config) == ESP_OK) {
-        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/",      .method=HTTP_GET, .handler=handle_root  });
-        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/drive", .method=HTTP_GET, .handler=handle_drive });
-        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/status",.method=HTTP_GET, .handler=handle_status });
-        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/servo", .method=HTTP_GET, .handler=handle_servo });
-        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/nav",   .method=HTTP_GET, .handler=handle_nav   });
+        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/",           .method=HTTP_GET, .handler=handle_root  });
+        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/drive",      .method=HTTP_GET, .handler=handle_drive });
+        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/status",     .method=HTTP_GET, .handler=handle_status });
+        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/job/status", .method=HTTP_GET, .handler=handle_status });
+        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/identity",   .method=HTTP_GET, .handler=handle_status });
+        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/servo",      .method=HTTP_GET, .handler=handle_servo });
+        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/nav",        .method=HTTP_GET, .handler=handle_nav   });
     } else {
         ESP_LOGE(TAG, "Failed to start HTTP server");
     }
