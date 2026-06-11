@@ -7,8 +7,8 @@
 #include "encoders.h"
 #include "server.h"
 
-#define LEFT_SENSOR_GPIO      4
-#define RIGHT_SENSOR_GPIO     5
+#define LEFT_SENSOR_GPIO      9
+#define RIGHT_SENSOR_GPIO     13
 #define SLOTS_ON_DISK         20
 #define SAMPLE_PERIOD_MS      20  // 50Hz for better control response
 #define WINDOW_SIZE           50  // Maintain 1 second rolling window (50 * 20ms = 1000ms)

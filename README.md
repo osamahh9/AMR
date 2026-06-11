@@ -39,17 +39,17 @@ A comprehensive, FreeRTOS-based firmware for an Autonomous Mobile Robot built on
 
 | Component | Pin (GPIO) | Subsystem / Function |
 | :--- | :--- | :--- |
-| **Left Motor (PWM)** | 19 (ENA) | `LEDC_TIMER_0`, `CHANNEL_0` |
-| **Left Motor (Dir)** | 20 (IN1), 21 (IN2) | Standard GPIO Output |
-| **Right Motor (PWM)** | 16 (ENB) | `LEDC_TIMER_0`, `CHANNEL_1` |
+| **Left Motor (PWM)** | 14 (ENA) | `LEDC_TIMER_1`, `CHANNEL_0` |
+| **Left Motor (Dir)** | 15 (IN1), 21 (IN2) | Standard GPIO Output |
+| **Right Motor (PWM)** | 16 (ENB) | `LEDC_TIMER_1`, `CHANNEL_1` |
 | **Right Motor (Dir)** | 17 (IN3), 18 (IN4) | Standard GPIO Output |
-| **Left Encoder** | 4 | `PCNT` Unit 0 |
-| **Right Encoder** | 5 | `PCNT` Unit 1 |
-| **Ultrasonic Trig** | 1 | Standard GPIO Output |
-| **Ultrasonic Echo** | 2 | Standard GPIO Input |
-| **Servo 1** | 6 | `LEDC_TIMER_1`, `CHANNEL_2` |
-| **Servo 2** | 7 | `LEDC_TIMER_1`, `CHANNEL_3` |
-| **Servo 3 (Inverse)**| 8 | `LEDC_TIMER_1`, `CHANNEL_4` |
+| **Left Encoder** | 9 | `PCNT` Unit 0 |
+| **Right Encoder** | 13 | `PCNT` Unit 1 |
+| **Ultrasonic Trig** | 7 | Standard GPIO Output |
+| **Ultrasonic Echo** | 8 | Standard GPIO Input |
+| **Servo 1** | 10 | `LEDC_TIMER_0`, `CHANNEL_2` |
+| **Servo 2** | 11 | `LEDC_TIMER_0`, `CHANNEL_3` |
+| **Servo 3 (Inverse)**| 12 | `LEDC_TIMER_0`, `CHANNEL_4` |
 
 ---
 
@@ -105,7 +105,7 @@ Open that IP address in any modern web browser (e.g., `http://192.168.1.100`).
 
 ### Servo Control
 Adjust the horizontal sliders for **Servo 1** and **Servo 2**.
-*   *Note: Servo 3 (GPIO 8) is hardcoded to automatically mirror Servo 1 inversely (180 deg - angle).*
+*   *Note: Servo 3 (GPIO 12) is hardcoded to automatically mirror Servo 1 inversely (180 deg - angle).*
 
 ### Emergency Stop
 Click the red **EMERGENCY STOP** button to immediately halt the navigation sequence and cut power to the motors.

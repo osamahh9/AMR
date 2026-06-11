@@ -12,8 +12,8 @@ volatile uint32_t measured_distance = 0;
 volatile bool obstacle_detected = false;
 
 // --- Configuration ---
-#define ULTRASONIC_TRIGGER_PIN 1
-#define ULTRASONIC_ECHO_PIN    2
+#define ULTRASONIC_TRIGGER_PIN 7
+#define ULTRASONIC_ECHO_PIN    8
 #define MAX_DISTANCE_CM        400
 #define DETECTION_THRESHOLD_CM 20
 
