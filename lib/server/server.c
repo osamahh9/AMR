@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <math.h>
 #include "esp_log.h"
+#include "cJSON.h"
 
 static const char *TAG = "Server";
 
@@ -26,21 +27,32 @@ esp_err_t handle_root(httpd_req_t *req) {
 
 // Handler for /status returns JSON including pose from control module
 esp_err_t handle_status(httpd_req_t *req) {
-    char json_response[256];
-    snprintf(json_response, sizeof(json_response), 
-             "{\"left\":%.1f,\"right\":%.1f,\"dist\":%ld,\"obs\":%d,\"x\":%.1f,\"y\":%.1f,\"th\":%.1f,\"mqtt\":%d}", 
-             current_measured_rpm_left, current_measured_rpm_right, 
-             measured_distance, obstacle_detected ? 1 : 0,
-             current_x, current_y, current_theta,
-             mqtt_is_connected() ? 1 : 0);
-    
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddNumberToObject(root, "left", current_measured_rpm_left);
+    cJSON_AddNumberToObject(root, "right", current_measured_rpm_right);
+    cJSON_AddNumberToObject(root, "dist", measured_distance);
+    cJSON_AddBoolToObject(root, "obs", obstacle_detected);
+    cJSON_AddNumberToObject(root, "x", current_x);
+    cJSON_AddNumberToObject(root, "y", current_y);
+    cJSON_AddNumberToObject(root, "th", current_theta);
+    cJSON_AddBoolToObject(root, "mqtt", mqtt_is_connected());
+    cJSON_AddStringToObject(root, "cmd", last_mqtt_cmd);
+
+    char *json_str = cJSON_PrintUnformatted(root);
     httpd_resp_set_type(req, "application/json");
-    return httpd_resp_send(req, json_response, HTTPD_RESP_USE_STRLEN);
+    httpd_resp_send(req, json_str, HTTPD_RESP_USE_STRLEN);
+
+    free(json_str);
+    cJSON_Delete(root);
+    return ESP_OK;
 }
 
 // Handler for /drive?left=XXX&right=YYY (Manual Override)
 esp_err_t handle_drive(httpd_req_t *req) {
-    nav_active = false; // Manual drive overrides autonomous nav
+    if (nav_active) {
+        nav_active = false;
+        control_reset_state();
+    }
     size_t buf_len = httpd_req_get_url_query_len(req) + 1;
     if (buf_len > 1) {
         char *buf = malloc(buf_len);
@@ -62,6 +74,7 @@ esp_err_t handle_nav(httpd_req_t *req) {
         char *buf = malloc(buf_len);
         if (httpd_req_get_url_query_str(req, buf, buf_len) == ESP_OK) {
             char val[10];
+            control_reset_state(); // Clear state before new mission
             if (httpd_query_key_value(buf, "x", val, sizeof(val)) == ESP_OK) target_x = atof(val);
             if (httpd_query_key_value(buf, "y", val, sizeof(val)) == ESP_OK) target_y = atof(val);
             if (httpd_query_key_value(buf, "th", val, sizeof(val)) == ESP_OK) {
@@ -96,10 +109,79 @@ esp_err_t handle_servo(httpd_req_t *req) {
     return ESP_OK;
 }
 
+// Handler for /tune?param=XXX&val=YYY
+esp_err_t handle_tune(httpd_req_t *req) {
+    size_t buf_len = httpd_req_get_url_query_len(req) + 1;
+    if (buf_len > 1) {
+        char *buf = malloc(buf_len);
+        if (httpd_req_get_url_query_str(req, buf, buf_len) == ESP_OK) {
+            char param[32], val[16];
+            if (httpd_query_key_value(buf, "param", param, sizeof(param)) == ESP_OK &&
+                httpd_query_key_value(buf, "val", val, sizeof(val)) == ESP_OK) {
+                float v = atof(val);
+                if (strcmp(param, "kp") == 0) Kp = v;
+                else if (strcmp(param, "ki") == 0) Ki = v;
+                else if (strcmp(param, "accel") == 0) accel_limit = v;
+                else if (strcmp(param, "dist_tol") == 0) dist_tolerance = v;
+                else if (strcmp(param, "ang_tol") == 0) angle_tolerance = v;
+                else if (strcmp(param, "obs_th") == 0) obstacle_threshold = (uint32_t)v;
+                ESP_LOGI(TAG, "Tuning: %s = %.3f", param, v);
+            }
+        }
+        free(buf);
+    }
+    httpd_resp_send(req, "OK", 2);
+    return ESP_OK;
+}
+
+// Handler for /mode?pid=0/1
+esp_err_t handle_mode(httpd_req_t *req) {
+    size_t buf_len = httpd_req_get_url_query_len(req) + 1;
+    if (buf_len > 1) {
+        char *buf = malloc(buf_len);
+        if (httpd_req_get_url_query_str(req, buf, buf_len) == ESP_OK) {
+            char val[10];
+            if (httpd_query_key_value(buf, "pid", val, sizeof(val)) == ESP_OK) {
+                bool new_mode = (atoi(val) != 0);
+                if (new_mode != manual_pid_enabled) {
+                    control_reset_state();
+                    manual_pid_enabled = new_mode;
+                }
+                ESP_LOGI(TAG, "Control Mode: %s", manual_pid_enabled ? "PID" : "RAW");
+            }
+        }
+        free(buf);
+    }
+    httpd_resp_send(req, "OK", 2);
+    return ESP_OK;
+}
+
+// Handler for /raw?left=XXX&right=YYY
+esp_err_t handle_raw(httpd_req_t *req) {
+    if (manual_pid_enabled) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Enable RAW mode first");
+    }
+    size_t buf_len = httpd_req_get_url_query_len(req) + 1;
+    if (buf_len > 1) {
+        char *buf = malloc(buf_len);
+        if (httpd_req_get_url_query_str(req, buf, buf_len) == ESP_OK) {
+            char p_l[10], p_r[10];
+            if (httpd_query_key_value(buf, "left", p_l, sizeof(p_l)) == ESP_OK) manual_power_left = atoi(p_l);
+            if (httpd_query_key_value(buf, "right", p_r, sizeof(p_r)) == ESP_OK) manual_power_right = atoi(p_r);
+        }
+        free(buf);
+    }
+    httpd_resp_send(req, "OK", 2);
+    return ESP_OK;
+}
+
 void server_init(void) {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.stack_size = 8192;
+    config.max_uri_handlers = 12; // Fix 404s
+    config.lru_purge_enable = true;
+    config.recv_wait_timeout = 2;
 
     if (httpd_start(&server, &config) == ESP_OK) {
         httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/",           .method=HTTP_GET, .handler=handle_root  });
@@ -109,6 +191,9 @@ void server_init(void) {
         httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/identity",   .method=HTTP_GET, .handler=handle_status });
         httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/servo",      .method=HTTP_GET, .handler=handle_servo });
         httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/nav",        .method=HTTP_GET, .handler=handle_nav   });
+        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/tune",       .method=HTTP_GET, .handler=handle_tune  });
+        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/mode",       .method=HTTP_GET, .handler=handle_mode  });
+        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/raw",        .method=HTTP_GET, .handler=handle_raw   });
     } else {
         ESP_LOGE(TAG, "Failed to start HTTP server");
     }

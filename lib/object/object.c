@@ -10,12 +10,12 @@ static const char *TAG = "OBJECT_DETECTION";
 
 volatile uint32_t measured_distance = 0;
 volatile bool obstacle_detected = false;
+volatile uint32_t obstacle_threshold = 20;
 
 // --- Configuration ---
 #define ULTRASONIC_TRIGGER_PIN 7
 #define ULTRASONIC_ECHO_PIN    8
 #define MAX_DISTANCE_CM        400
-#define DETECTION_THRESHOLD_CM 20
 
 // NOTE: Check if GPIO 6/7 are used for Flash on your specific board!
 // If they are, servos will not work.
@@ -92,7 +92,7 @@ void object_detection_task(void *pvParameters) {
             obstacle_detected = false;
         } else {
             measured_distance = distance;
-            obstacle_detected = (distance < DETECTION_THRESHOLD_CM);
+            obstacle_detected = (distance < obstacle_threshold);
 
             // Apply desired angles from web
             iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_1, desired_servo_angle_1);

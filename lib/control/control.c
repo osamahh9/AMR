@@ -25,15 +25,22 @@ volatile int desired_rpm_right = 0;
 #define PULSES_PER_REV    20.0
 #define MM_PER_PULSE      (M_PI * WHEEL_DIAMETER_MM / PULSES_PER_REV)
 
-// Navigation Configuration
+// Navigation Configuration (Turned into tunable variables)
 #define NAV_MAX_RPM       200.0
 #define NAV_MIN_RPM       40.0
-#define DIST_TOLERANCE_MM 20.0
-#define ANGLE_TOLERANCE_RAD 0.05
 #define DECEL_DIST_MM     300.0
 #define STEER_GAIN        25.0f
 #define TURN_GAIN         80.0f
-#define ACCEL_LIMIT       2.0f  // Reduced to 2.0 to maintain 100 RPM/s at 50Hz frequency
+
+volatile float Kp = 0.15f;
+volatile float Ki = 0.05f;
+volatile float accel_limit = 2.0f;
+volatile float dist_tolerance = 20.0f;
+volatile float angle_tolerance = 0.05f;
+
+volatile bool manual_pid_enabled = true;
+volatile int manual_power_left = 0;
+volatile int manual_power_right = 0;
 
 typedef enum {
     NAV_IDLE,
@@ -45,12 +52,20 @@ typedef enum {
 static nav_state_t current_nav_state = NAV_IDLE;
 
 // PID Gains for Speed
-static float Kp = 0.15, Ki = 0.05;
 static float integral_left = 0, integral_right = 0;
 static int power_left_last = 0, power_right_last = 0;
 
 // Acceleration ramp state
 static float commanded_speed = 0;
+
+void control_reset_state(void) {
+    integral_left = 0;
+    integral_right = 0;
+    commanded_speed = 0;
+    power_left_last = 0;
+    power_right_last = 0;
+    ESP_LOGD(TAG, "Control state reset");
+}
 
 // Odometry pulses
 static int64_t last_pulses_left = 0;
@@ -122,7 +137,7 @@ void control_task(void *arg) {
                 while (angle_error > M_PI) angle_error -= 2 * M_PI;
                 while (angle_error < -M_PI) angle_error += 2 * M_PI;
 
-                if (fabsf(angle_error) < ANGLE_TOLERANCE_RAD) {
+                if (fabsf(angle_error) < angle_tolerance) {
                     current_nav_state = NAV_DRIVE_TO_GOAL;
                 } else {
                     float turn_speed = angle_error * TURN_GAIN;
@@ -139,15 +154,15 @@ void control_task(void *arg) {
                 while (angle_error > M_PI) angle_error -= 2 * M_PI;
                 while (angle_error < -M_PI) angle_error += 2 * M_PI;
 
-                if (dist_to_goal < DIST_TOLERANCE_MM) {
+                if (dist_to_goal < dist_tolerance) {
                     current_nav_state = NAV_ROTATE_TO_FINAL;
                     commanded_speed = 0;
                 } else {
                     float target_speed = fminf(NAV_MAX_RPM, dist_to_goal * 0.8f);
                     if (target_speed < NAV_MIN_RPM) target_speed = NAV_MIN_RPM;
 
-                    if (commanded_speed < target_speed) commanded_speed += ACCEL_LIMIT;
-                    else if (commanded_speed > target_speed) commanded_speed -= ACCEL_LIMIT;
+                    if (commanded_speed < target_speed) commanded_speed += accel_limit;
+                    else if (commanded_speed > target_speed) commanded_speed -= accel_limit;
                     
                     float steer = angle_error * STEER_GAIN;
                     desired_rpm_left = (int)(commanded_speed - steer);
@@ -165,7 +180,7 @@ void control_task(void *arg) {
                 while (angle_error > M_PI) angle_error -= 2 * M_PI;
                 while (angle_error < -M_PI) angle_error += 2 * M_PI;
 
-                if (fabsf(angle_error) < ANGLE_TOLERANCE_RAD) {
+                if (fabsf(angle_error) < angle_tolerance) {
                     ESP_LOGI(TAG, "Nav Complete!");
                     nav_active = false;
                     mqtt_report_completion();
@@ -189,8 +204,13 @@ void control_task(void *arg) {
             commanded_speed = 0;
         }
 
-        int p_left = run_pid((float)desired_rpm_left, current_measured_rpm_left, &integral_left, &power_left_last);
-        int p_right = run_pid((float)desired_rpm_right, current_measured_rpm_right, &integral_right, &power_right_last);
-        motors_set(p_left, p_right);
+        if (manual_pid_enabled || nav_active) {
+            int p_left = run_pid((float)desired_rpm_left, current_measured_rpm_left, &integral_left, &power_left_last);
+            int p_right = run_pid((float)desired_rpm_right, current_measured_rpm_right, &integral_right, &power_right_last);
+            motors_set(p_left, p_right);
+        } else {
+            // Manual Raw Mode
+            motors_set(manual_power_left, manual_power_right);
+        }
     }
 }

@@ -22,6 +22,7 @@ void init_system(void) {
 void app_main(void) {
     init_system();
 
-    xTaskCreate(control_task, "control_task", 4096, NULL, 5, NULL);
-    xTaskCreate(object_detection_task, "object_detection_task", 4096, NULL, 5, NULL);
+    // High priority for motor control (10) and safety sensors (7)
+    xTaskCreate(control_task, "control_task", 4096, NULL, 10, NULL);
+    xTaskCreate(object_detection_task, "object_detection_task", 4096, NULL, 7, NULL);
 }

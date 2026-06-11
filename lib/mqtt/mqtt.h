@@ -34,4 +34,6 @@ void mqtt_report_completion(void);
  */
 bool mqtt_is_connected(void);
 
+extern char last_mqtt_cmd[128];
+
 #endif // MQTT_H

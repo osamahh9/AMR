@@ -22,12 +22,16 @@
 
 #include "mqtt.h"
 #include "control.h"
+#include "object.h"
+#include "encoders.h"
 #include <math.h>
 
 static const char *TAG = "MQTT";
 
 static esp_mqtt_client_handle_t client;
 static bool connected = false;
+
+char last_mqtt_cmd[128] = "NONE";
 
 // Command handling state
 static char current_job_id[64] = "";
@@ -87,6 +91,9 @@ void mqtt_publish_status(void) {
     cJSON_AddNumberToObject(root, "x", current_x);
     cJSON_AddNumberToObject(root, "y", current_y);
     cJSON_AddNumberToObject(root, "th", current_theta * 180.0f / M_PI);
+    cJSON_AddNumberToObject(root, "dist", (double)measured_distance);
+    cJSON_AddNumberToObject(root, "rpm_l", current_measured_rpm_left);
+    cJSON_AddNumberToObject(root, "rpm_r", current_measured_rpm_right);
     cJSON_AddBoolToObject(root, "mqtt", true);
 
     char *json_str = cJSON_PrintUnformatted(root);
@@ -103,6 +110,11 @@ void mqtt_report_completion(void) {
 }
 
 static void handle_amr_command(const char *data, int len) {
+    // Store raw command for UI monitoring
+    int copy_len = (len < sizeof(last_mqtt_cmd) - 1) ? len : sizeof(last_mqtt_cmd) - 1;
+    memcpy(last_mqtt_cmd, data, copy_len);
+    last_mqtt_cmd[copy_len] = '\0';
+
     cJSON *root = cJSON_Parse(data);
     if (!root) return;
 
@@ -192,7 +204,8 @@ void mqtt_app_start(void) {
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
     esp_mqtt_client_start(client);
 
-    xTaskCreate(mqtt_status_task, "mqtt_status_task", 4096, NULL, 5, NULL);
+    // Low priority (4) for non-critical status publishing
+    xTaskCreate(mqtt_status_task, "mqtt_status_task", 4096, NULL, 4, NULL);
 }
 
 bool mqtt_is_connected(void) {

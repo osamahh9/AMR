@@ -6,6 +6,7 @@
 
 extern volatile uint32_t measured_distance;
 extern volatile bool obstacle_detected;
+extern volatile uint32_t obstacle_threshold;
 
 /**
  * @brief Initialize the object detection system (ultrasonic and servos)

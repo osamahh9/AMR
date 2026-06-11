@@ -18,6 +18,18 @@ extern volatile bool nav_active;
 extern volatile int desired_rpm_left;
 extern volatile int desired_rpm_right;
 
+// Tuning Parameters
+extern volatile float Kp, Ki;
+extern volatile float accel_limit;
+extern volatile float dist_tolerance;
+extern volatile float angle_tolerance;
+
+// Control Modes
+extern volatile bool manual_pid_enabled;
+extern volatile int manual_power_left;
+extern volatile int manual_power_right;
+
+void control_reset_state(void);
 void control_task(void *arg);
 
 #endif
