@@ -17,8 +17,6 @@ volatile uint32_t obstacle_threshold = 20;
 #define ULTRASONIC_ECHO_PIN    8
 #define MAX_DISTANCE_CM        400
 
-// NOTE: Check if GPIO 6/7 are used for Flash on your specific board!
-// If they are, servos will not work.
 #define SERVO_PIN_1            10
 #define SERVO_PIN_2            11
 #define SERVO_PIN_3            12
@@ -56,11 +54,12 @@ esp_err_t object_detection_init(void) {
         return ret;
     }
 
-    // Startup test
-    iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_1, 1.0f);
-    iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_2, 1.0f);
-    iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_3, 1.0f);
-    vTaskDelay(pdMS_TO_TICKS(100));
+    // Aggressive Startup Test (Sweep to 90 and back)
+    ESP_LOGI(TAG, "Running servo sweep test...");
+    iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_1, 90.0f);
+    iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_2, 90.0f);
+    iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_3, 90.0f);
+    vTaskDelay(pdMS_TO_TICKS(500));
     iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_1, 0.0f);
     iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_2, 0.0f);
     iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_3, 0.0f);
@@ -83,7 +82,6 @@ void object_detection_task(void *pvParameters) {
     esp_err_t res;
 
     while (1) {
-        // Increased frequency to 20Hz (50ms) to match robot speed
         vTaskDelay(pdMS_TO_TICKS(50));
 
         res = ultrasonic_measure_cm(&sensor, MAX_DISTANCE_CM, &distance);
@@ -93,14 +91,15 @@ void object_detection_task(void *pvParameters) {
         } else {
             measured_distance = distance;
             obstacle_detected = (distance < obstacle_threshold);
-
-            // Apply desired angles from web
-            iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_1, desired_servo_angle_1);
-            iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_2, desired_servo_angle_2);
-            
-            // Servo 3 follows inverse of Servo 1
-            float inverse_angle = 180.0f - desired_servo_angle_1;
-            iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_3, inverse_angle);
         }
+
+        // --- Decoupled Servo Updates ---
+        // These now run even if the ultrasonic sensor fails
+        iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_1, desired_servo_angle_1);
+        iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_2, desired_servo_angle_2);
+        
+        // Servo 3 follows inverse of Servo 1
+        float inverse_angle = 180.0f - desired_servo_angle_1;
+        iot_servo_write_angle(LEDC_LOW_SPEED_MODE, SERVO_CH_3, inverse_angle);
     }
 }

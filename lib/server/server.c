@@ -194,11 +194,12 @@ void server_init(void) {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.stack_size = 8192;
-    config.max_uri_handlers = 12; // Sufficient for all endpoints
-    config.max_open_sockets = 7;   // Reverted to system maximum to allow startup
+    config.max_uri_handlers = 16; 
+    config.max_open_sockets = 7;   // Keep at 7 but improve recycling
     config.lru_purge_enable = true;
-    config.recv_wait_timeout = 2;
-    config.keep_alive_enable = true; // Favor persistent connections
+    config.recv_wait_timeout = 1;  // Aggressive recycling
+    config.send_wait_timeout = 1;
+    config.keep_alive_enable = true; 
 
     if (httpd_start(&server, &config) == ESP_OK) {
         httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/",           .method=HTTP_GET, .handler=handle_root  });
