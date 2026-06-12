@@ -39,6 +39,7 @@ volatile float dist_tolerance = 20.0f;
 volatile float angle_tolerance = 0.05f;
 
 volatile bool manual_pid_enabled = true;
+volatile bool emergency_halt_active = false;
 volatile int manual_power_left = 0;
 volatile int manual_power_right = 0;
 
@@ -119,6 +120,12 @@ static void clamp_rpm(volatile int *val) {
 void control_task(void *arg) {
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(20)); // 50Hz
+
+        if (emergency_halt_active) {
+            motors_set(0, 0);
+            continue;
+        }
+
         update_odometry();
 
         if (nav_active) {

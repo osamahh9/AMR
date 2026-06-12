@@ -50,21 +50,37 @@ void motors_init(void) {
 
 // speed: -100% (full reverse) to +100% (full forward), 0 = stop
 void motors_set(int S_left, int S_right) {
+    // Clamp inputs to [-100, 100] to prevent hardware register overflow (1023 max)
+    if (S_left > 100) S_left = 100;
+    if (S_left < -100) S_left = -100;
+    if (S_right > 100) S_right = 100;
+    if (S_right < -100) S_right = -100;
+
     int left = 1023 * S_left / 100;
     int right = 1023 * S_right / 100;
-    // Left motor direction
-    gpio_set_level(IN1, left  > 0 ? 1 : 0);
-    gpio_set_level(IN2, left  < 0 ? 1 : 0);
 
-    // Right motor direction
-    gpio_set_level(IN3, right > 0 ? 1 : 0);
-    gpio_set_level(IN4, right < 0 ? 1 : 0);
+    // Left motor: Active Braking if 0, else Direction Control
+    if (S_left == 0) {
+        gpio_set_level(IN1, 0);
+        gpio_set_level(IN2, 0);
+    } else {
+        gpio_set_level(IN1, left > 0 ? 1 : 0);
+        gpio_set_level(IN2, left < 0 ? 1 : 0);
+    }
 
-    // Left motor speed (absolute value)
+    // Right motor: Active Braking if 0, else Direction Control
+    if (S_right == 0) {
+        gpio_set_level(IN3, 0);
+        gpio_set_level(IN4, 0);
+    } else {
+        gpio_set_level(IN3, right > 0 ? 1 : 0);
+        gpio_set_level(IN4, right < 0 ? 1 : 0);
+    }
+
+    // Apply Duty Cycles
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, left < 0 ? -left : left);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
 
-    // Right motor speed (absolute value)
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, right < 0 ? -right : right);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
 }

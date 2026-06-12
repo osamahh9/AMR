@@ -83,8 +83,6 @@
                     <span class="text-[8px] text-on-surface-variant uppercase font-bold">Right</span>
                 </div>
             </div>
-            
-            <button class="w-full bg-error-container/20 border border-error/30 text-error py-1.5 rounded font-bold text-[10px] uppercase active:scale-95" onclick="stopAll()">Emergency Stop</button>
         </section>
 
         <!-- SPATIAL MAP (Fixed Responsiveness) -->
@@ -177,6 +175,7 @@
     <script>
         let isJoystickActive = false;
         let joystickX = 0, joystickY = 0;
+        let lastSentL = 0, lastSentR = 0; 
         const container = document.getElementById('joystick-container');
         const handle = document.getElementById('joystick-handle');
         const path = [];
@@ -223,40 +222,47 @@
             const maxVal = Math.max(Math.abs(l), Math.abs(r));
             if (maxVal > 1.0) { l /= maxVal; r /= maxVal; }
 
-            if (isPid) {
-                const baseRPM = 200;
-                const l_rpm = Math.round(l * baseRPM * mult);
-                const r_rpm = Math.round(r * baseRPM * mult);
-                updateVisuals(l_rpm, r_rpm, baseRPM * mult, " RPM");
-                fetch("/drive?left=" + l_rpm + "&right=" + r_rpm);
-            } else {
-                const l_pow = Math.round(l * 100 * mult);
-                const r_pow = Math.round(r * 100 * mult);
-                updateVisuals(l_pow, r_pow, 100 * mult, "%");
-                fetch("/raw?left=" + l_pow + "&right=" + r_pow);
+            const threshold = isPid ? 2 : 1; 
+            const currentL = isPid ? Math.round(l * 200 * mult) : Math.round(l * 100 * mult);
+            const currentR = isPid ? Math.round(r * 200 * mult) : Math.round(r * 100 * mult);
+
+            const lChanged = Math.abs(currentL - lastSentL) > threshold || (currentL === 0 && lastSentL !== 0);
+            const rChanged = Math.abs(currentR - lastSentR) > threshold || (currentR === 0 && lastSentR !== 0);
+
+            if (lChanged || rChanged) {
+                lastSentL = currentL;
+                lastSentR = currentR;
+
+                if (isPid) {
+                    updateVisuals(currentL, currentR, 200 * mult, " RPM");
+                    fetch("/drive?left=" + currentL + "&right=" + currentR);
+                } else {
+                    updateVisuals(currentL, currentR, 100 * mult, "%");
+                    fetch("/raw?left=" + currentL + "&right=" + currentR);
+                }
             }
         }
 
         function updateVisuals(l, r, max, unit) {
             document.getElementById('l_val').innerText = l + (unit || "");
             document.getElementById('r_val').innerText = r + (unit || "");
-            
             const lFill = document.getElementById('l_meter');
             const rFill = document.getElementById('r_meter');
             const lPerc = (l / (max || 1)) * 50; 
             const rPerc = (r / (max || 1)) * 50;
-
             if (l >= 0) { lFill.style.left = '50%'; lFill.style.width = Math.abs(lPerc) + '%'; }
             else { lFill.style.left = (50 - Math.abs(lPerc)) + '%'; lFill.style.width = Math.abs(lPerc) + '%'; }
-            
             if (r >= 0) { rFill.style.left = '50%'; rFill.style.width = Math.abs(rPerc) + '%'; }
             else { rFill.style.left = (50 - Math.abs(rPerc)) + '%'; rFill.style.width = Math.abs(rPerc) + '%'; }
         }
 
         function stopAll() {
-            vibrate([100, 50, 100]);
+            vibrate([150, 50, 150]);
             isJoystickActive = false; handle.style.left = '50%'; handle.style.top = '50%';
-            joystickX = 0; joystickY = 0; updateMotors();
+            joystickX = 0; joystickY = 0; 
+            // Explicitly reset meters to zero
+            updateVisuals(0, 0, 1, "");
+            fetch("/halt");
             document.body.style.backgroundColor = '#410004'; setTimeout(() => { document.body.style.backgroundColor = ''; }, 150);
         }
 
@@ -264,108 +270,56 @@
             const canvas = document.getElementById('mapCanvas');
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
-            
             const x = parseFloat(rawX) || 0;
             const y = parseFloat(rawY) || 0;
             const th = parseFloat(rawTh) || 0;
-
             if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) { 
-                canvas.width = canvas.clientWidth; 
-                canvas.height = canvas.clientHeight; 
+                canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight; 
             }
-            
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            let minX = x, maxX = x;
-            let minY = y, maxY = y;
-
+            let minX = x, maxX = x, minY = y, maxY = y;
             path.forEach(p => {
-                if (p.x < minX) minX = p.x;
-                if (p.x > maxX) maxX = p.x;
-                if (p.y < minY) minY = p.y;
-                if (p.y > maxY) maxY = p.y;
+                if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+                if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
             });
-
-            const deltaX = Math.max(maxX - minX, 100); 
-            const deltaY = Math.max(maxY - minY, 100);
-
+            const deltaX = Math.max(maxX - minX, 100); const deltaY = Math.max(maxY - minY, 100);
             const pixelMargin = 32; 
             const availableWidth = canvas.width - (2 * pixelMargin);
             const availableHeight = canvas.height - (2 * pixelMargin);
-
-            const scaleX = availableWidth / deltaX;
-            const scaleY = availableHeight / deltaY;
-            let scale = Math.min(scaleX, scaleY);
-            if (scale > 1.2) scale = 1.2; 
-
-            const midX = (minX + maxX) / 2;
-            const midY = (minY + maxY) / 2;
-            const offX = canvas.width / 2 - midX * scale;
-            const offY = canvas.height / 2 + midY * scale;
-
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
-            ctx.lineWidth = 1;
+            const scaleX = availableWidth / deltaX; const scaleY = availableHeight / deltaY;
+            let scale = Math.min(scaleX, scaleY); if (scale > 1.2) scale = 1.2; 
+            const midX = (minX + maxX) / 2; const midY = (minY + maxY) / 2;
+            const offX = canvas.width / 2 - midX * scale; const offY = canvas.height / 2 + midY * scale;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)'; ctx.lineWidth = 1;
             const gridSpacing = 50; 
-            
             const startX = Math.floor((-offX) / scale / gridSpacing) * gridSpacing;
             const endX = Math.floor((canvas.width - offX) / scale / gridSpacing) * gridSpacing;
             for (let gx = startX; gx <= endX; gx += gridSpacing) {
-                const sx = offX + gx * scale;
-                ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, canvas.height); ctx.stroke();
+                const sx = offX + gx * scale; ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, canvas.height); ctx.stroke();
             }
-            
             const startY = Math.floor((offY - canvas.height) / scale / gridSpacing) * gridSpacing;
             const endY = Math.floor((offY) / scale / gridSpacing) * gridSpacing;
             for (let gy = startY; gy <= endY; gy += gridSpacing) {
-                const sy = offY - gy * scale;
-                ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(canvas.width, sy); ctx.stroke();
+                const sy = offY - gy * scale; ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(canvas.width, sy); ctx.stroke();
             }
-
-            ctx.strokeStyle = 'rgba(0, 209, 255, 0.15)';
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(0, 209, 255, 0.15)'; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(offX, 0); ctx.lineTo(offX, canvas.height); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(0, offY); ctx.lineTo(canvas.width, offY); ctx.stroke();
-
             if (path.length > 0) {
-                ctx.beginPath();
-                ctx.strokeStyle = 'rgba(0, 209, 255, 0.65)'; 
-                ctx.lineWidth = 2.5;
+                ctx.beginPath(); ctx.strokeStyle = 'rgba(0, 209, 255, 0.65)'; ctx.lineWidth = 2.5;
                 path.forEach((p, i) => {
-                    const px = offX + p.x * scale;
-                    const py = offY - p.y * scale;
+                    const px = offX + p.x * scale; const py = offY - p.y * scale;
                     if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
                 });
                 ctx.stroke();
             }
-
-            const rx = offX + x * scale;
-            const ry = offY - y * scale;
-
+            const rx = offX + x * scale; const ry = offY - y * scale;
             const pulseRadius = 14 + Math.sin(Date.now() / 150) * 4;
-            ctx.beginPath();
-            ctx.arc(rx, ry, pulseRadius, 0, 2 * Math.PI);
-            ctx.strokeStyle = 'rgba(52, 255, 141, 0.4)';
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-
-            ctx.save();
-            ctx.translate(rx, ry);
-            ctx.rotate(-th);
-
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = '#34ff8d';
-            ctx.fillStyle = '#34ff8d'; 
-            
-            ctx.beginPath();
-            ctx.moveTo(16, 0);
-            ctx.lineTo(-10, -8);
-            ctx.lineTo(-5, 0);
-            ctx.lineTo(-10, 8);
-            ctx.closePath();
-            ctx.fill();
-            
+            ctx.beginPath(); ctx.arc(rx, ry, pulseRadius, 0, 2 * Math.PI); ctx.strokeStyle = 'rgba(52, 255, 141, 0.4)'; ctx.lineWidth = 1.5; ctx.stroke();
+            ctx.save(); ctx.translate(rx, ry); ctx.rotate(-th);
+            ctx.shadowBlur = 15; ctx.shadowColor = '#34ff8d'; ctx.fillStyle = '#34ff8d'; 
+            ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-10, -8); ctx.lineTo(-5, 0); ctx.lineTo(-10, 8); ctx.closePath(); ctx.fill();
             ctx.restore();
-
             document.getElementById('cur_x').innerText = x.toFixed(0);
             document.getElementById('cur_y').innerText = y.toFixed(0);
             document.getElementById('cur_th').innerText = (th * 180 / Math.PI).toFixed(1);
@@ -389,25 +343,14 @@
             fetch("/status").then(r => r.json()).then(data => {
                 document.body.className = data.obs ? "status-obs text-on-surface flex flex-col pb-8 pt-[70px]" : (data.left != 0 ? "status-nav text-on-surface flex flex-col pb-8 pt-[70px]" : "status-normal text-on-surface flex flex-col pb-8 pt-[70px]");
                 if(data.obs) vibrate(40);
-                
-                const xVal = parseFloat(data.x) || 0;
-                const yVal = parseFloat(data.y) || 0;
-                const thVal = parseFloat(data.th) || 0;
-
-                path.push({x: xVal, y: yVal}); 
-                if(path.length > 200) path.shift();
-                
+                const xVal = parseFloat(data.x) || 0; const yVal = parseFloat(data.y) || 0; const thVal = parseFloat(data.th) || 0;
+                path.push({x: xVal, y: yVal}); if(path.length > 200) path.shift();
                 drawMap(xVal, yVal, thVal);
-
-                rpmHistory.l.push(data.left); rpmHistory.r.push(data.right);
-                if(rpmHistory.l.length > MAX_HISTORY) { rpmHistory.l.shift(); rpmHistory.r.shift(); }
-                
+                rpmHistory.l.push(data.left); rpmHistory.r.push(data.right); if(rpmHistory.l.length > MAX_HISTORY) { rpmHistory.l.shift(); rpmHistory.r.shift(); }
                 const rpmPeak = Math.max(Math.max(...rpmHistory.l.map(Math.abs)), Math.max(...rpmHistory.r.map(Math.abs)), 50);
                 drawChart('rpmChart', rpmHistory, ['#34ff8d', '#00d1ff'], rpmPeak);
-
                 distHistory.push(data.dist); if(distHistory.length > MAX_HISTORY) distHistory.shift();
-                const distPeak = Math.max(...distHistory, 20);
-                drawChart('distChart', distHistory, ['#ffb4ab'], distPeak);
+                const distPeak = Math.max(...distHistory, 20); drawChart('distChart', distHistory, ['#ffb4ab'], distPeak);
             }).catch(e => {});
         }
 
@@ -418,11 +361,10 @@
 
         container.addEventListener('mousedown', (e) => { isJoystickActive = true; handleJoystick(e); vibrate(10); });
         container.addEventListener('touchstart', (e) => { isJoystickActive = true; handleJoystick(e); vibrate(10); e.preventDefault(); }, {passive: false});
-        window.addEventListener('mousemove', (e) => { if(isJoystickActive) handleJoystick(e); });
-        window.addEventListener('touchmove', (e) => { if(isJoystickActive) { handleJoystick(e); e.preventDefault(); } }, {passive: false});
+        window.addEventListener('mousemove', handleJoystick);
+        window.addEventListener('touchmove', handleJoystick, {passive: false});
         const stopJoy = () => { if(isJoystickActive) { isJoystickActive=false; handle.style.left='50%'; handle.style.top='50%'; joystickX=0; joystickY=0; updateMotors(); } };
         window.addEventListener('mouseup', stopJoy); window.addEventListener('touchend', stopJoy); window.addEventListener('blur', stopJoy);
-
         setInterval(fetchStatus, 150);
     </script>
 </body>

@@ -26,6 +26,7 @@ extern volatile float angle_tolerance;
 
 // Control Modes
 extern volatile bool manual_pid_enabled;
+extern volatile bool emergency_halt_active;
 extern volatile int manual_power_left;
 extern volatile int manual_power_right;
 

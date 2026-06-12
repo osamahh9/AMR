@@ -4,6 +4,7 @@
 #include "object.h"
 #include "control.h"
 #include "mqtt.h"
+#include "motors.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -47,8 +48,20 @@ esp_err_t handle_status(httpd_req_t *req) {
     return ESP_OK;
 }
 
+// Handler for /halt
+esp_err_t handle_halt(httpd_req_t *req) {
+    emergency_halt_active = true;
+    nav_active = false;
+    control_reset_state();
+    motors_set(0, 0);
+    ESP_LOGW(TAG, "EMERGENCY HALT ACTIVATED");
+    httpd_resp_send(req, "HALTED", 6);
+    return ESP_OK;
+}
+
 // Handler for /drive?left=XXX&right=YYY (Manual Override)
 esp_err_t handle_drive(httpd_req_t *req) {
+    emergency_halt_active = false; // Reset halt on new command
     if (nav_active) {
         nav_active = false;
         control_reset_state();
@@ -69,6 +82,7 @@ esp_err_t handle_drive(httpd_req_t *req) {
 
 // Handler for /nav?x=X&y=Y&th=T
 esp_err_t handle_nav(httpd_req_t *req) {
+    emergency_halt_active = false; // Reset halt on new command
     size_t buf_len = httpd_req_get_url_query_len(req) + 1;
     if (buf_len > 1) {
         char *buf = malloc(buf_len);
@@ -158,6 +172,7 @@ esp_err_t handle_mode(httpd_req_t *req) {
 
 // Handler for /raw?left=XXX&right=YYY
 esp_err_t handle_raw(httpd_req_t *req) {
+    emergency_halt_active = false; // Reset halt on new command
     if (manual_pid_enabled) {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Enable RAW mode first");
     }
@@ -179,9 +194,11 @@ void server_init(void) {
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.stack_size = 8192;
-    config.max_uri_handlers = 12; // Fix 404s
+    config.max_uri_handlers = 12; // Sufficient for all endpoints
+    config.max_open_sockets = 7;   // Reverted to system maximum to allow startup
     config.lru_purge_enable = true;
     config.recv_wait_timeout = 2;
+    config.keep_alive_enable = true; // Favor persistent connections
 
     if (httpd_start(&server, &config) == ESP_OK) {
         httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/",           .method=HTTP_GET, .handler=handle_root  });
@@ -194,6 +211,7 @@ void server_init(void) {
         httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/tune",       .method=HTTP_GET, .handler=handle_tune  });
         httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/mode",       .method=HTTP_GET, .handler=handle_mode  });
         httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/raw",        .method=HTTP_GET, .handler=handle_raw   });
+        httpd_register_uri_handler(server, &(httpd_uri_t){ .uri="/halt",       .method=HTTP_GET, .handler=handle_halt  });
     } else {
         ESP_LOGE(TAG, "Failed to start HTTP server");
     }
